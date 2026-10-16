@@ -25,7 +25,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: result?.success ?? true,
       message: result?.message ?? null,
-      recharge: result?.recharge ?? 0
+      recharge: result?.recharge ?? 0,
+      ota: result?.ota ?? false
     });
   } catch (error: any) {
     console.error('API /telemetry error:', error);

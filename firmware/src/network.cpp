@@ -5,6 +5,7 @@
 #include "billing.h"
 #include "display.h"
 #include "diagnostics.h"
+#include "ota.h"
 
 #include <WiFi.h>
 #include <time.h>
@@ -234,6 +235,11 @@ static void syncTelemetry(const MeterReading &live) {
                 Serial.printf("[NET] Received LCD Message: %s\n", msg);
                 showCustomMessage(msg);
             }
+        }
+        if (!err && doc.containsKey("ota") && doc["ota"] == true) {
+            const char* customOtaUrl = doc["ota_url"].as<const char*>();
+            Serial.println("[NET] Cloud triggered Over-The-Air firmware update!");
+            triggerOTA(customOtaUrl);
         }
     }
     http.end();

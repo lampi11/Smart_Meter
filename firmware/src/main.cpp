@@ -74,9 +74,14 @@ static void processSerialCommand(const char* cmd) {
         Serial.printf("WiFi: %s (IP: %s)\n", isWiFiConnected() ? "CONNECTED" : "DISCONNECTED", 
                       isWiFiConnected() ? WiFi.localIP().toString().c_str() : "None");
     }
+    // OTA (manually triggers firmware update from server)
+    else if (strcmp(cmd, "OTA") == 0) {
+        Serial.println("Initiating Over-The-Air firmware update...");
+        triggerOTA();
+    }
     // HELP
     else {
-        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | INFO | RESET_WIFI | HELP");
+        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | INFO | RESET_WIFI | OTA | HELP");
     }
 }
 

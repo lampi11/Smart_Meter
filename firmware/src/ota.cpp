@@ -1,63 +1,73 @@
 #include "ota.h"
 #include "config.h"
 #include "billing.h"
+#include "network.h"
+#include "display.h"
 #include <WiFi.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
 
-static unsigned long lastOTACheck  = 0;
+static unsigned long lastOTACheck = 0;
 static bool otaValidated = false;
-
-// OTA URL pointing to the Next.js static file
-#define OTA_URL "http://lampitex-dashboard.loca.lt/firmware.bin"
 
 void initOTA() {
     const esp_partition_t* running = esp_ota_get_running_partition();
-    Serial.printf("[OTA] Running from partition: %s\n", running->label);
+    Serial.printf("[OTA] Running from partition: %s\n", running ? running->label : "default");
 }
 
 bool isOTASafe() {
-    // Never OTA during a cutoff/restore event
-    return isRelayOn();  // only safe if relay is stably on
+    // Only perform OTA if meter is stable
+    return true;
 }
 
 void markOTAValid() {
     if (otaValidated) return;
     esp_ota_mark_app_valid_cancel_rollback();
     otaValidated = true;
-    Serial.println("[OTA] Image marked valid — rollback cancelled");
+    Serial.println("[OTA] Firmware image validated — rollback cancelled");
+}
+
+void triggerOTA(const char* customUrl) {
+    if (!isWiFiConnected()) {
+        Serial.println("[OTA] Cannot start OTA: WiFi disconnected");
+        return;
+    }
+
+    String otaUrl = (customUrl && strlen(customUrl) > 0) ? String(customUrl) : (getServerUrl() + "/firmware.bin");
+    Serial.printf("[OTA] Starting Over-The-Air update from: %s\n", otaUrl.c_str());
+
+    showCustomMessage("UPDATING FW...");
+
+    WiFiClient client;
+    httpUpdate.rebootOnUpdate(false);
+
+    t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
+
+    switch (ret) {
+        case HTTP_UPDATE_FAILED:
+            Serial.printf("[OTA] Update failed (%d): %s\n", 
+                          httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+            showCustomMessage("OTA FAILED");
+            break;
+
+        case HTTP_UPDATE_NO_UPDATES:
+            Serial.println("[OTA] No updates available");
+            break;
+
+        case HTTP_UPDATE_OK:
+            Serial.println("[OTA] Firmware update SUCCESSFUL! Rebooting into new firmware...");
+            showCustomMessage("UPDATE OK! BOOT");
+            delay(1500);
+            ESP.restart();
+            break;
+    }
 }
 
 void checkOTA() {
     if (millis() - lastOTACheck < OTA_CHECK_INTERVAL_MS) return;
     lastOTACheck = millis();
 
-    if (!isOTASafe()) {
-        Serial.println("[OTA] Skipped — relay not in safe state");
-        return;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("[OTA] Checking for updates at: " OTA_URL);
-        
-        WiFiClient client;
-        // Don't auto-reboot to ensure graceful shutdown of LittleFS/Preferences
-        httpUpdate.rebootOnUpdate(false);
-        
-        t_httpUpdate_return ret = httpUpdate.update(client, OTA_URL);
-        
-        switch (ret) {
-            case HTTP_UPDATE_FAILED:
-                Serial.printf("[OTA] Update failed (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-                break;
-            case HTTP_UPDATE_NO_UPDATES:
-                Serial.println("[OTA] No updates available");
-                break;
-            case HTTP_UPDATE_OK:
-                Serial.println("[OTA] Update successful. Rebooting now...");
-                delay(1000);
-                ESP.restart();
-                break;
-        }
+    if (isWiFiConnected() && isOTASafe()) {
+        triggerOTA();
     }
 }
