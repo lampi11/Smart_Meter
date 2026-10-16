@@ -42,10 +42,26 @@ void initBilling() {
 void updateBilling(const MeterReading &reading) {
     if (!reading.valid) return;
 
-    // --- energy-delta billing ---
-    if (lastEnergyKwh >= 0 && reading.energy >= lastEnergyKwh) {
+    // First reading initialization
+    if (lastEnergyKwh < 0) {
+        lastEnergyKwh = reading.energy;
+        return;
+    }
+
+    // --- energy-delta billing with plausibility safeguard ---
+    if (reading.energy >= lastEnergyKwh) {
         float deltaKwh = reading.energy - lastEnergyKwh;
-        float cost     = deltaKwh * DEFAULT_TARIFF_GRID;
+
+        // Reject physically impossible jumps (e.g. UART noise or corrupted PZEM registers)
+        if (deltaKwh > MAX_ENERGY_DELTA_KWH) {
+            Serial.printf("[BILLING] Corrupt energy jump rejected! delta=%.3f kWh (last=%.3f, now=%.3f)\n",
+                          deltaKwh, lastEnergyKwh, reading.energy);
+            // Resync baseline to new energy without deducting
+            lastEnergyKwh = reading.energy;
+            return;
+        }
+
+        float cost = deltaKwh * DEFAULT_TARIFF_GRID;
         currentBalance       -= cost;
         unsavedConsumptionRs += cost;
     }
@@ -89,6 +105,22 @@ void applyRecharge(float amount) {
     }
     Serial.printf("[BILLING] Fund adjustment: %+.2f → Balance Rs %.2f (Relay %s)\n", 
                   amount, currentBalance, relayOn ? "ON" : "OFF");
+}
+
+void setBalanceDirect(float newBal) {
+    currentBalance = newBal;
+    saveBalanceNow("direct_set");
+
+    if (!relayOn && currentBalance > 0) {
+        setRelay(true);
+        saveBalanceNow("restored_after_set");
+    } else if (relayOn && currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
+        setRelay(false);
+        saveBalanceNow("cutoff_after_set");
+        verifyRelay();
+    }
+    Serial.printf("[BILLING] Direct balance set to: Rs %.2f (Relay %s)\n", 
+                  currentBalance, relayOn ? "ON" : "OFF");
 }
 
 float        getBalance()            { return currentBalance; }

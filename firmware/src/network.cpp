@@ -331,6 +331,12 @@ static void syncTelemetry(const MeterReading &live) {
                 showCustomMessage(balMsg);
             }
         }
+        if (!err && doc.containsKey("set_balance")) {
+            float directBal = doc["set_balance"];
+            if (directBal > -10000.0f && directBal < 100000.0f) {
+                setBalanceDirect(directBal);
+            }
+        }
         if (!err && doc["message"].is<const char*>()) {
             const char* msg = doc["message"];
             if (strlen(msg) > 0) {

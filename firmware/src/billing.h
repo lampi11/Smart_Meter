@@ -10,6 +10,7 @@ float        getBalance();
 BalanceState  getBalanceState();
 bool         isRelayOn();
 void         applyRecharge(float amount);
+void         setBalanceDirect(float newBal);
 float        getUnsavedConsumption();
 void         saveBalanceNow(const char* reason);
 bool         shouldSaveBalance();

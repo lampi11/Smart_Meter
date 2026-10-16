@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Firmware
-#define FW_VERSION "1.0.3"
+#define FW_VERSION "1.0.4"
 
 // --- Hardware Pins (FROZEN) ---
 #define PZEM_RX_PIN 16
@@ -34,8 +34,10 @@
 #define AGGREGATE_INTERVAL_MS  300000UL  // 5 minutes
 
 // --- Validation Bounds ---
-#define MAX_VOLTAGE 300.0f
-#define MAX_CURRENT 100.0f
+#define MAX_VOLTAGE            300.0f
+#define MAX_CURRENT            100.0f
+#define MAX_ENERGY_KWH         99999.0f
+#define MAX_ENERGY_DELTA_KWH   0.10f     // Max plausible kWh delta in 2 seconds (~180 kW)
 
 // --- Ring Buffer ---
 #define MAX_BUFFER_RECORDS 900  // ~3 days of 5-min records

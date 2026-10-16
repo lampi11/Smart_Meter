@@ -37,7 +37,7 @@ bool readMeter(MeterReading &r) {
     // Populate other metrics independently so zero load / floating PF doesn't discard valid voltage
     r.current     = (!isnan(i) && i >= 0 && i <= MAX_CURRENT) ? i : 0.0f;
     r.power       = (!isnan(p) && p >= 0) ? p : 0.0f;
-    r.energy      = (!isnan(e) && e >= 0) ? e : 0.0f;
+    r.energy      = (!isnan(e) && e >= 0 && e <= MAX_ENERGY_KWH) ? e : 0.0f;
     r.frequency   = (!isnan(f) && f >= 0) ? f : 50.0f;
     r.powerFactor = (!isnan(pf) && pf >= 0) ? pf : 1.0f;
 
