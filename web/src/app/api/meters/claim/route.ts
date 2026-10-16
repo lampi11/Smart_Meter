@@ -9,13 +9,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Serial number and claim code are required' }, { status: 400 });
     }
 
-    // Call stored procedure or direct check
-    // 1. Look up meter in product_registry
-    const { data: product, error: prodErr } = await supabase
+    // 1. Look up meter in product_registry (flexible: handles with or without hyphens/spaces)
+    const rawSerial = serial_number.trim().toUpperCase();
+    const cleanInput = rawSerial.replace(/[-\s]/g, '');
+
+    const { data: allProducts, error: prodErr } = await supabase
       .from('product_registry')
-      .select('*')
-      .ilike('serial_number', serial_number.trim())
-      .single();
+      .select('*');
+
+    const product = (allProducts || []).find((p: any) => {
+      const cleanDb = (p.serial_number || '').replace(/[-\s]/g, '').toUpperCase();
+      return cleanDb === cleanInput || p.serial_number.toUpperCase() === rawSerial;
+    });
 
     if (prodErr || !product) {
       return NextResponse.json({ 
