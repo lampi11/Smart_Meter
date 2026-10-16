@@ -15,3 +15,5 @@ float        getUnsavedConsumption();
 void         saveBalanceNow(const char* reason);
 bool         shouldSaveBalance();
 bool         inNoCutWindow();
+void         setRelayPolarity(bool activeLow);
+bool         isRelayActiveLow();

@@ -17,6 +17,7 @@ export async function GET(request: Request) {
         balance,
         tariff_grid,
         relay_on,
+        relay_polarity,
         last_seen_at,
         created_at,
         properties ( name )
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
           label: meter.label,
           balance: meter.balance,
           relay_on: meter.relay_on,
+          relay_polarity: meter.relay_polarity || 'LOW',
           last_seen_at: meter.last_seen_at,
           is_online: isOnline,
           property_name: meter.properties?.name || 'Main Property',

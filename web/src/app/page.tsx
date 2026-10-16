@@ -206,6 +206,9 @@ export default function Dashboard() {
                           }`}>
                             {isRelayOn ? 'POWER ON' : 'CUTOFF'}
                           </span>
+                          <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                            Active-{meter.relay_polarity || 'LOW'}
+                          </span>
                         </h2>
                         <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           <MapPin className="w-3 h-3" /> {meter.property_name}
@@ -378,6 +381,32 @@ export default function Dashboard() {
                         }}
                         className="w-full text-center text-[11px] font-semibold text-amber-600 hover:text-amber-800 hover:bg-amber-50 py-1 rounded transition flex items-center justify-center gap-1">
                         <Wifi className="w-3 h-3 text-amber-500" /> Reset Wi-Fi via OTA
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          const currentPol = meter.relay_polarity || 'LOW';
+                          const newPol = currentPol === 'HIGH' ? 'LOW' : 'HIGH';
+                          if (!confirm(`Switch relay output logic for ${meter.label} from Active-${currentPol} to Active-${newPol}?\n\n- Active-LOW (Default): Drives GPIO 4 to 0V (GND) when ON. Recommended for SSR-40DA (sink) & Arduino relay modules.\n- Active-HIGH: Drives GPIO 4 to 3.3V when ON.`)) return;
+                          try {
+                            const res = await fetch('/api/meters/polarity', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ meter_id: meter.id, polarity: newPol })
+                            });
+                            const d = await res.json();
+                            if (d.success) {
+                              alert(`Relay logic updated to Active-${newPol}! Firmware will adapt instantly.`);
+                              fetchData();
+                            } else {
+                              alert(d.error || 'Failed to update polarity');
+                            }
+                          } catch (e) {
+                            alert('Network error updating polarity');
+                          }
+                        }}
+                        className="w-full text-center text-[11px] font-semibold text-purple-600 hover:text-purple-800 hover:bg-purple-50 py-1 rounded transition flex items-center justify-center gap-1">
+                        <Activity className="w-3 h-3 text-purple-500" /> Relay Logic: Active-{meter.relay_polarity || 'LOW'} (Toggle)
                       </button>
                     </div>
                   </div>

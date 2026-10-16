@@ -315,7 +315,7 @@ static void syncTelemetry(const MeterReading &live) {
         }
 
         String response = http.getString();
-        StaticJsonDocument<384> doc;
+        StaticJsonDocument<512> doc;
         DeserializationError err = deserializeJson(doc, response);
         
         if (!err && doc.containsKey("recharge")) {
@@ -335,6 +335,12 @@ static void syncTelemetry(const MeterReading &live) {
             float directBal = doc["set_balance"];
             if (directBal > -10000.0f && directBal < 100000.0f) {
                 setBalanceDirect(directBal);
+            }
+        }
+        if (!err && doc.containsKey("relay_polarity")) {
+            const char* pol = doc["relay_polarity"];
+            if (pol != nullptr) {
+                setRelayPolarity(strcmp(pol, "HIGH") == 0 ? false : true);
             }
         }
         if (!err && doc["message"].is<const char*>()) {

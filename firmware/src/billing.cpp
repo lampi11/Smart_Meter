@@ -11,12 +11,17 @@ static float lastEnergyKwh        = -1.0f;
 static float unsavedConsumptionRs = 0;
 static unsigned long lastSaveTime = 0;
 static bool  relayOn              = true;
+static bool  relayActiveLow       = (RELAY_ON_STATE == LOW);
 
 // ── helpers ──────────────────────────────────────────────
 static void setRelay(bool on) {
     relayOn = on;
-    digitalWrite(RELAY_PIN, on ? RELAY_ON_STATE : RELAY_OFF_STATE);
-    Serial.printf("[BILLING] Relay %s\n", on ? "ON" : "OFF");
+    int pinState = on ? (relayActiveLow ? LOW : HIGH) : (relayActiveLow ? HIGH : LOW);
+    digitalWrite(RELAY_PIN, pinState);
+    Serial.printf("[BILLING] Relay %s (GPIO %d = %s, Active-%s)\n", 
+                  on ? "ON" : "OFF", RELAY_PIN, 
+                  pinState == HIGH ? "HIGH" : "LOW",
+                  relayActiveLow ? "LOW" : "HIGH");
 }
 
 static void verifyRelay() {
@@ -32,14 +37,41 @@ void initBilling() {
     billingPrefs.begin("billing", false);
     currentBalance = billingPrefs.getFloat("balance", DEFAULT_BALANCE);
     lastEnergyKwh  = billingPrefs.getFloat("lastE", -1.0f);
+    relayActiveLow = billingPrefs.getBool("actLow", (RELAY_ON_STATE == LOW));
     lastSaveTime   = millis();
 
     pinMode(RELAY_PIN, OUTPUT);
-    setRelay(true);   // default power-on
-    Serial.printf("[BILLING] Boot balance: Rs %.2f\n", currentBalance);
+    // Immediately energize relay if balance is good or in grace period
+    setRelay(currentBalance > EMERGENCY_CREDIT_LIMIT || inNoCutWindow());
+    Serial.printf("[BILLING] Boot balance: Rs %.2f | Relay: %s (Active-%s)\n", 
+                  currentBalance, relayOn ? "ON" : "OFF", relayActiveLow ? "LOW" : "HIGH");
+}
+
+void setRelayPolarity(bool activeLow) {
+    if (relayActiveLow != activeLow) {
+        relayActiveLow = activeLow;
+        billingPrefs.putBool("actLow", activeLow);
+        Serial.printf("[BILLING] Relay polarity switched to Active-%s\n", activeLow ? "LOW" : "HIGH");
+        setRelay(relayOn);
+    }
+}
+
+bool isRelayActiveLow() {
+    return relayActiveLow;
 }
 
 void updateBilling(const MeterReading &reading) {
+    // Cutoff / restore logic must evaluate unconditionally on every cycle
+    // (Ensures relay is energized even if PZEM reading is not yet valid or 0V)
+    if (currentBalance <= EMERGENCY_CREDIT_LIMIT && relayOn && !inNoCutWindow()) {
+        setRelay(false);
+        saveBalanceNow("cutoff");
+        verifyRelay();
+    } else if (currentBalance > 0 && !relayOn) {
+        setRelay(true);
+        saveBalanceNow("restored");
+    }
+
     if (!reading.valid) return;
 
     // First reading initialization
@@ -56,7 +88,6 @@ void updateBilling(const MeterReading &reading) {
         if (deltaKwh > MAX_ENERGY_DELTA_KWH) {
             Serial.printf("[BILLING] Corrupt energy jump rejected! delta=%.3f kWh (last=%.3f, now=%.3f)\n",
                           deltaKwh, lastEnergyKwh, reading.energy);
-            // Resync baseline to new energy without deducting
             lastEnergyKwh = reading.energy;
             return;
         }
@@ -67,14 +98,11 @@ void updateBilling(const MeterReading &reading) {
     }
     lastEnergyKwh = reading.energy;
 
-    // --- cutoff / restore logic ---
+    // Check cutoff again if consumption dropped balance below emergency limit
     if (currentBalance <= EMERGENCY_CREDIT_LIMIT && relayOn && !inNoCutWindow()) {
         setRelay(false);
         saveBalanceNow("cutoff");
         verifyRelay();
-    } else if (currentBalance > 0 && !relayOn) {
-        setRelay(true);
-        saveBalanceNow("restored");
     }
 }
 
