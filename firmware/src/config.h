@@ -45,7 +45,7 @@
 #define IST_OFFSET_SECONDS     19800     // UTC+5:30
 #define WIFI_RETRY_INTERVAL_MS 30000UL
 #define SYNC_INTERVAL_MS       2000UL    // 2-second live dashboard updates
-#define DEFAULT_SERVER_URL     "https://smart-meter-lampi11.vercel.app"
+#define DEFAULT_SERVER_URL     "https://smart-meter-tau.vercel.app"
 #define FALLBACK_SERVER_URL    "http://lampitex-dashboard.loca.lt"
 #define AP_SSID_PREFIX         "Lampitex-Setup-"
 #define CONFIG_PORTAL_TIMEOUT  180       // 3 minutes captive portal timeout

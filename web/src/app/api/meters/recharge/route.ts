@@ -21,11 +21,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Meter not found' }, { status: 404 });
     }
 
+    const newBalance = parseFloat(meter.balance) + parsedAmount;
     const newPending = (parseFloat(meter.pending_recharge) || 0) + parsedAmount;
 
     const { error: updateErr } = await supabase
       .from('meters')
-      .update({ pending_recharge: newPending })
+      .update({ 
+        balance: newBalance,
+        pending_recharge: newPending 
+      })
       .eq('id', meter_id);
 
     if (updateErr) {

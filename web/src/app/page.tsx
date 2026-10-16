@@ -75,6 +75,36 @@ export default function Dashboard() {
     }
   };
 
+  const handleAdjustFunds = async (meterId: string, amount: number) => {
+    try {
+      const res = await fetch('/api/meters/recharge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meter_id: meterId, amount })
+      });
+      const result = await res.json();
+      if (result.success) {
+        await fetchData();
+      } else {
+        alert(result.error || 'Failed to adjust funds');
+      }
+    } catch (err) {
+      console.error('Adjust funds error:', err);
+    }
+  };
+
+  const handleSendMessage = async (meterId: string, message: string) => {
+    try {
+      await fetch('/api/meters/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meter_id: meterId, message })
+      });
+    } catch (err) {
+      console.error('Send message error:', err);
+    }
+  };
+
   if (loading && !data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-700">
@@ -246,13 +276,9 @@ export default function Dashboard() {
                           className="flex-1 text-sm px-3 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-indigo-500"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              const val = e.currentTarget.value;
+                              const val = e.currentTarget.value.trim();
                               if (val) {
-                                fetch('/api/meters/message', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ meter_id: meter.id, message: val })
-                                });
+                                handleSendMessage(meter.id, val);
                                 e.currentTarget.value = '';
                               }
                             }
@@ -263,17 +289,14 @@ export default function Dashboard() {
                         <input 
                           id={`recharge-${meter.id}`}
                           type="number" 
+                          step="any"
                           placeholder="Recharge/Deduct (Rs)" 
-                          className="flex-1 text-sm px-3 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-green-500"
+                          className="flex-1 text-sm px-3 py-1.5 border border-gray-200 rounded focus:outline-none focus:border-green-500 font-semibold"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               const val = parseFloat(e.currentTarget.value);
                               if (!isNaN(val)) {
-                                fetch('/api/meters/recharge', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ meter_id: meter.id, amount: val })
-                                });
+                                handleAdjustFunds(meter.id, val);
                                 e.currentTarget.value = '';
                               }
                             }
@@ -285,11 +308,7 @@ export default function Dashboard() {
                             if (input) {
                               const val = parseFloat(input.value);
                               if (!isNaN(val)) {
-                                fetch('/api/meters/recharge', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ meter_id: meter.id, amount: val })
-                                });
+                                handleAdjustFunds(meter.id, val);
                                 input.value = '';
                               }
                             }

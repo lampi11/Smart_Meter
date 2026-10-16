@@ -65,7 +65,7 @@ String getClaimCode() {
 String getServerUrl() {
     if (cachedServerUrl.length() == 0) {
         netPrefs.begin("device", false);
-        cachedServerUrl = netPrefs.getString("server_url", FALLBACK_SERVER_URL);
+        cachedServerUrl = netPrefs.getString("server_url", DEFAULT_SERVER_URL);
         netPrefs.end();
     }
     return cachedServerUrl;
