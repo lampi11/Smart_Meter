@@ -28,7 +28,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 3000);
+    const interval = setInterval(fetchData, 1500);
     return () => clearInterval(interval);
   }, []);
 
@@ -76,6 +76,24 @@ export default function Dashboard() {
   };
 
   const handleAdjustFunds = async (meterId: string, amount: number) => {
+    // Instant optimistic update on UI (< 5ms)
+    setData((prev: any) => {
+      if (!prev || !prev.meters) return prev;
+      return {
+        ...prev,
+        meters: prev.meters.map((m: any) => {
+          if (m.id === meterId) {
+            const currentBal = parseFloat(m.balance) || 0;
+            return {
+              ...m,
+              balance: (currentBal + amount).toFixed(2)
+            };
+          }
+          return m;
+        })
+      };
+    });
+
     try {
       const res = await fetch('/api/meters/recharge', {
         method: 'POST',
@@ -87,9 +105,11 @@ export default function Dashboard() {
         await fetchData();
       } else {
         alert(result.error || 'Failed to adjust funds');
+        await fetchData(); // rollback
       }
     } catch (err) {
       console.error('Adjust funds error:', err);
+      await fetchData(); // rollback
     }
   };
 

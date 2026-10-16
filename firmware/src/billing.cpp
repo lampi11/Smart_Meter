@@ -77,14 +77,19 @@ void saveBalanceNow(const char* reason) {
 }
 
 void applyRecharge(float amount) {
-    
     currentBalance += amount;
-    saveBalanceNow("recharge");
+    saveBalanceNow(amount >= 0 ? "recharge" : "deduction");
+
     if (!relayOn && currentBalance > 0) {
         setRelay(true);
         saveBalanceNow("restored_after_recharge");
+    } else if (relayOn && currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
+        setRelay(false);
+        saveBalanceNow("cutoff_after_deduction");
+        verifyRelay();
     }
-    Serial.printf("[BILLING] Recharged +%.2f → Rs %.2f\n", amount, currentBalance);
+    Serial.printf("[BILLING] Fund adjustment: %+.2f → Balance Rs %.2f (Relay %s)\n", 
+                  amount, currentBalance, relayOn ? "ON" : "OFF");
 }
 
 float        getBalance()            { return currentBalance; }

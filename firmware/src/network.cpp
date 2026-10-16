@@ -14,6 +14,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
+#include <esp_wifi.h>
 #include "secrets.h"
 
 static Preferences netPrefs;
@@ -21,6 +22,12 @@ static unsigned long lastRetry = 0;
 static unsigned long lastSync = 0;
 static unsigned long lastAnonReport = 0;
 static bool ntpSynced = false;
+
+// Persistent HTTP Keep-Alive client for lightning-fast sub-second telemetry
+static HTTPClient syncHttp;
+static WiFiClientSecure syncSecureClient;
+static WiFiClient syncPlainClient;
+static bool syncHttpConnected = false;
 
 // Anonymous R&D metrics accumulators
 static float vMin = 999.0f;
@@ -92,10 +99,33 @@ static void configModeCallback(WiFiManager *myWiFiManager) {
 void initNetwork() {
     WiFi.mode(WIFI_STA);
 
+    // 1. Enable Channels 1-13 (India/Europe/Asia standard) - solves missing networks on channels 12 & 13
+    wifi_country_t country = {
+        .cc = "IN",
+        .schan = 1,
+        .nchan = 13,
+        .max_tx_power = 20,
+        .policy = WIFI_COUNTRY_POLICY_MANUAL
+    };
+    esp_wifi_set_country(&country);
+
+    // 2. Disable modem sleep - eliminates packet latency & drops on weak networks
+    WiFi.setSleep(false);
+
+    // 3. Maximum RF transmit power for maximum wall penetration & signal range
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    WiFi.setAutoReconnect(true);
+
     WiFiManager wm;
     wm.setAPCallback(configModeCallback);
-    wm.setConnectTimeout(15);
+    wm.setConnectTimeout(12);
     wm.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
+    wm.setCaptivePortalEnable(true);       // Forces captive portal popup on all mobile OS
+    wm.setAPClientCheck(true);             // Don't timeout while phone is actively connected
+    wm.setShowStaticFields(true);          // Allows manual Static IP / Gateway entry if DHCP fails
+    wm.setShowDnsFields(true);             // Allows custom DNS (e.g. 8.8.8.8)
+    wm.setScanDispPerc(true);              // Shows signal % in scan list
+    wm.setBreakAfterConfig(true);          // Resumes immediately once credentials saved
 
     String serial = getSerialNumber();
     String code = getClaimCode();
@@ -220,20 +250,22 @@ static void syncTelemetry(const MeterReading &live) {
         sampleCount++;
     }
 
-    HTTPClient http;
-    WiFiClientSecure secureClient;
-    WiFiClient plainClient;
     String url = getServerUrl() + "/api/telemetry";
 
-    if (url.startsWith("https://")) {
-        secureClient.setInsecure();
-        http.begin(secureClient, url);
-    } else {
-        http.begin(plainClient, url);
+    if (!syncHttpConnected || !syncHttp.connected()) {
+        if (syncHttpConnected) syncHttp.end();
+        if (url.startsWith("https://")) {
+            syncSecureClient.setInsecure();
+            syncHttp.begin(syncSecureClient, url);
+        } else {
+            syncHttp.begin(syncPlainClient, url);
+        }
+        syncHttp.setReuse(true);
+        syncHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        syncHttp.setTimeout(2500);
+        syncHttpConnected = true;
     }
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(4000);
-    http.addHeader("Content-Type", "application/json");
+    syncHttp.addHeader("Content-Type", "application/json");
 
     String payload = "{";
     payload += "\"device_id\":\"" + getDeviceMac() + "\",";
@@ -254,17 +286,23 @@ static void syncTelemetry(const MeterReading &live) {
 
     payload += "]}";
 
-    int httpResponseCode = http.POST(payload);
+    int httpResponseCode = syncHttp.POST(payload);
     if (httpResponseCode == 200) {
-        String response = http.getString();
+        String response = syncHttp.getString();
         StaticJsonDocument<256> doc;
         DeserializationError err = deserializeJson(doc, response);
         
         if (!err && doc.containsKey("recharge")) {
             float amt = doc["recharge"];
             if (amt != 0) {
-                Serial.printf("[NET] Received Recharge: %.2f\n", amt);
+                Serial.printf("[NET] Instant Remote Fund Adjustment: %+.2f\n", amt);
                 applyRecharge(amt);
+
+                // Immediate LCD flash feedback
+                char balMsg[17];
+                if (amt > 0) snprintf(balMsg, sizeof(balMsg), "+Rs%.0f Added!", amt);
+                else snprintf(balMsg, sizeof(balMsg), "Rs%.0f Deducted", -amt);
+                showCustomMessage(balMsg);
             }
         }
         if (!err && doc["message"].is<const char*>()) {
@@ -277,10 +315,16 @@ static void syncTelemetry(const MeterReading &live) {
         if (!err && doc.containsKey("ota") && doc["ota"] == true) {
             const char* customOtaUrl = doc["ota_url"].as<const char*>();
             Serial.println("[NET] Cloud triggered Over-The-Air firmware update!");
+            syncHttp.end();
+            syncHttpConnected = false;
             triggerOTA(customOtaUrl);
         }
+    } else {
+        if (httpResponseCode < 0) {
+            syncHttp.end();
+            syncHttpConnected = false;
+        }
     }
-    http.end();
 }
 
 void maintainNetwork(const MeterReading &live) {
@@ -299,6 +343,11 @@ void maintainNetwork(const MeterReading &live) {
             sendAnonymousReport();
         }
         return;
+    }
+
+    if (syncHttpConnected) {
+        syncHttp.end();
+        syncHttpConnected = false;
     }
 
     if (millis() - lastRetry > WIFI_RETRY_INTERVAL_MS) {
