@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Firmware
-#define FW_VERSION "1.0.6"
+#define FW_VERSION "1.0.7"
 
 // --- Hardware Pins (FROZEN) ---
 #define PZEM_RX_PIN 16

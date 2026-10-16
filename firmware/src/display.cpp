@@ -86,10 +86,14 @@ void updateDisplay(const MeterReading &reading, float balance,
 
     lcd->clear();
 
-    // Line 0: V / I / P
+    // Line 0: V / P / Relay State
     lcd->setCursor(0, 0);
-    lcd->printf("V:%.0f I:%.1f P:%.0f",
-                reading.voltage, reading.current, reading.power);
+    char line0[17];
+    snprintf(line0, sizeof(line0), "V:%.0f P:%.0f R:%s%c",
+             reading.voltage, reading.power, 
+             relayOn ? "ON" : "OFF",
+             isRelayActiveLow() ? 'L' : 'H');
+    lcd->print(line0);
 
     // Line 1: balance state
     lcd->setCursor(0, 1);
