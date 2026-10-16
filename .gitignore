@@ -1,0 +1,26 @@
+# Node / Next.js
+web/node_modules/
+dashboard/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.vercel
+web/.env*
+web/*.tsbuildinfo
+web/next-env.d.ts
+
+# PlatformIO / Firmware
+firmware/.pio/
+firmware/.vscode/
+Step1_Verification/.pio/
+Step1_Verification/.vscode/
+
+# Python / Virtualenv
+.venv/
+__pycache__/
+*.py[cod]
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
