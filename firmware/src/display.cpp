@@ -47,6 +47,25 @@ void showCustomMessage(const char* msg) {
     customMsgEnd = millis() + 3000; // Show for 3 seconds
 }
 
+void showSetupScreen(const char* apName, const char* code) {
+    if (!lcd) return;
+    lcd->clear();
+    lcd->setCursor(0, 0);
+    lcd->printf("AP:%.13s", apName);
+    lcd->setCursor(0, 1);
+    lcd->printf("Code:%.10s", code);
+}
+
+void showWiFiConnected(const char* ip) {
+    if (!lcd) return;
+    lcd->clear();
+    lcd->setCursor(0, 0);
+    lcd->print("WiFi Connected!");
+    lcd->setCursor(0, 1);
+    lcd->print(ip);
+    delay(2000);
+}
+
 void updateDisplay(const MeterReading &reading, float balance,
                    BalanceState state, bool relayOn) {
     if (!lcd) return;

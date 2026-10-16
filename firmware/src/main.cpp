@@ -2,6 +2,7 @@
 //  Lampitex Prepaid Smart Meter — Production Firmware v1.0
 // ─────────────────────────────────────────────────────────
 #include <Arduino.h>
+#include <WiFi.h>
 #include "config.h"
 #include "time_provider.h"
 #include "meter.h"
@@ -59,9 +60,23 @@ static void processSerialCommand(const char* cmd) {
         Serial.printf("Grid: Rs %.2f/kWh | DG: Rs %.2f/kWh\n",
                       DEFAULT_TARIFF_GRID, DEFAULT_TARIFF_DG);
     }
+    // RESET_WIFI (resets saved WiFi and restarts to captive portal)
+    else if (strcmp(cmd, "RESET_WIFI") == 0) {
+        Serial.println("Resetting WiFi credentials and rebooting...");
+        resetWiFiCredentials();
+        delay(1000);
+        ESP.restart();
+    }
+    // INFO (device serial, MAC, claim code, server)
+    else if (strcmp(cmd, "INFO") == 0) {
+        Serial.printf("Serial: %s | Claim Code: %s\n", getSerialNumber().c_str(), getClaimCode().c_str());
+        Serial.printf("MAC: %s | Server: %s\n", getDeviceMac().c_str(), getServerUrl().c_str());
+        Serial.printf("WiFi: %s (IP: %s)\n", isWiFiConnected() ? "CONNECTED" : "DISCONNECTED", 
+                      isWiFiConnected() ? WiFi.localIP().toString().c_str() : "None");
+    }
     // HELP
     else {
-        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | HELP");
+        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | INFO | RESET_WIFI | HELP");
     }
 }
 

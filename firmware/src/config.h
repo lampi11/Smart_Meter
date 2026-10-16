@@ -40,12 +40,16 @@
 // --- Ring Buffer ---
 #define MAX_BUFFER_RECORDS 900  // ~3 days of 5-min records
 
-// --- Network ---
+// --- Network & Provisioning ---
 #define NTP_SERVER             "pool.ntp.org"
 #define IST_OFFSET_SECONDS     19800     // UTC+5:30
 #define WIFI_RETRY_INTERVAL_MS 30000UL
-#define SYNC_INTERVAL_MS       30000UL
-#define LOCAL_API_URL          "http://lampitex-dashboard.loca.lt/api/telemetry"
+#define SYNC_INTERVAL_MS       2000UL    // 2-second live dashboard updates
+#define DEFAULT_SERVER_URL     "https://smart-meter-lampi11.vercel.app"
+#define FALLBACK_SERVER_URL    "http://lampitex-dashboard.loca.lt"
+#define AP_SSID_PREFIX         "Lampitex-Setup-"
+#define CONFIG_PORTAL_TIMEOUT  180       // 3 minutes captive portal timeout
+#define RND_TELEMETRY_INTERVAL 3600000UL // 1 hour R&D anonymous telemetry
 
 // --- OTA ---
 #define OTA_CHECK_INTERVAL_MS 21600000UL  // 6 hours
