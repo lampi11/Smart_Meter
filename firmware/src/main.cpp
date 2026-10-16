@@ -79,9 +79,24 @@ static void processSerialCommand(const char* cmd) {
         Serial.println("Initiating Over-The-Air firmware update...");
         triggerOTA();
     }
+    // WIFI <ssid> [pass] (quick direct setup)
+    else if (strncmp(cmd, "WIFI ", 5) == 0) {
+        char s[33] = {0};
+        char p[65] = {0};
+        int parts = sscanf(cmd + 5, "%32s %64s", s, p);
+        if (parts >= 1) {
+            Serial.printf("Connecting to WiFi: %s...\n", s);
+            WiFi.disconnect();
+            WiFi.mode(WIFI_STA);
+            WiFi.begin(s, parts == 2 ? p : "");
+        }
+    }
     // HELP
-    else {
-        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | INFO | RESET_WIFI | OTA | HELP");
+    else if (strcmp(cmd, "HELP") == 0) {
+        Serial.println("Commands: RECHARGE <amt> | STATUS | TARIFF | INFO | WIFI <ssid> <pass> | RESET_WIFI | OTA | HELP");
+    }
+    else if (strlen(cmd) > 0) {
+        Serial.printf("Unknown command: %s (Type HELP)\n", cmd);
     }
 }
 

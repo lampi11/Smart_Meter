@@ -14,6 +14,7 @@
 #include <ArduinoJson.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
+#include "secrets.h"
 
 static Preferences netPrefs;
 static unsigned long lastRetry = 0;
@@ -93,6 +94,7 @@ void initNetwork() {
 
     WiFiManager wm;
     wm.setAPCallback(configModeCallback);
+    wm.setConnectTimeout(15);
     wm.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
 
     String serial = getSerialNumber();
@@ -114,9 +116,24 @@ void initNetwork() {
     wm.addParameter(&customServerUrl);
 
     String apName = AP_SSID_PREFIX + serial.substring(serial.length() > 4 ? serial.length() - 4 : 0);
-    Serial.printf("[NET] Attempting WiFi autoConnect on %s...\n", apName.c_str());
+    Serial.printf("[NET] Attempting WiFi autoConnect on %s (15s timeout)...\n", apName.c_str());
 
     bool connected = wm.autoConnect(apName.c_str());
+
+    // Fallback: If WiFiManager didn't connect, try configured credentials from secrets.h
+    if (!connected && strlen(WIFI_SSID) > 0) {
+        Serial.printf("[NET] AutoConnect portal closed/failed. Trying fallback SSID: %s...\n", WIFI_SSID);
+        WiFi.disconnect();
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(WIFI_SSID, WIFI_PASS);
+        unsigned long t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 8000) {
+            delay(250);
+            Serial.print(".");
+        }
+        Serial.println();
+        connected = (WiFi.status() == WL_CONNECTED);
+    }
 
     if (connected) {
         Serial.printf("[NET] WiFi Connected! IP: %s\n", WiFi.localIP().toString().c_str());
@@ -131,7 +148,7 @@ void initNetwork() {
             Serial.printf("[NET] Updated Server URL to: %s\n", cachedServerUrl.c_str());
         }
     } else {
-        Serial.println("[NET] WiFi config timeout. Running in offline/autonomous metering mode.");
+        Serial.println("[NET] WiFi not connected. Running in autonomous metering mode with periodic background reconnect.");
     }
 }
 
@@ -286,7 +303,14 @@ void maintainNetwork(const MeterReading &live) {
 
     if (millis() - lastRetry > WIFI_RETRY_INTERVAL_MS) {
         lastRetry = millis();
-        WiFi.reconnect();
+        Serial.println("[NET] WiFi not connected, attempting reconnect...");
+        WiFi.disconnect();
+        WiFi.mode(WIFI_STA);
+        if (strlen(WIFI_SSID) > 0) {
+            WiFi.begin(WIFI_SSID, WIFI_PASS);
+        } else {
+            WiFi.begin();
+        }
     }
 }
 

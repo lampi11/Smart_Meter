@@ -48,7 +48,7 @@
 #define DEFAULT_SERVER_URL     "https://smart-meter-tau.vercel.app"
 #define FALLBACK_SERVER_URL    "http://lampitex-dashboard.loca.lt"
 #define AP_SSID_PREFIX         "Lampitex-Setup-"
-#define CONFIG_PORTAL_TIMEOUT  180       // 3 minutes captive portal timeout
+#define CONFIG_PORTAL_TIMEOUT  60       // 1 minute captive portal timeout
 #define RND_TELEMETRY_INTERVAL 3600000UL // 1 hour R&D anonymous telemetry
 
 // --- OTA ---
