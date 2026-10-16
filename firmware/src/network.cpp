@@ -350,10 +350,22 @@ static void syncTelemetry(const MeterReading &live) {
                 showCustomMessage(msg);
             }
         }
+        bool needOta = false;
+        String otaTargetUrl = "";
+
         if (!err && doc.containsKey("latest_version")) {
             const char* latestVer = doc["latest_version"];
             const char* otaUrl = doc.containsKey("ota_url") ? doc["ota_url"] : nullptr;
-            handleCloudVersionCheck(latestVer, otaUrl);
+            if (latestVer && compareVersions(latestVer, FW_VERSION) > 0) {
+                needOta = true;
+                if (otaUrl) otaTargetUrl = otaUrl;
+            }
+        }
+        if (!err && doc.containsKey("ota") && doc["ota"] == true) {
+            needOta = true;
+            if (doc.containsKey("ota_url")) {
+                otaTargetUrl = doc["ota_url"].as<String>();
+            }
         }
         if (!err && doc.containsKey("reset_wifi") && doc["reset_wifi"] == true) {
             Serial.println("[NET] Received Remote Wi-Fi Reset Command from Cloud!");
@@ -365,19 +377,22 @@ static void syncTelemetry(const MeterReading &live) {
             delay(500);
             ESP.restart();
         }
-        if (!err && doc.containsKey("ota") && doc["ota"] == true) {
-            const char* customOtaUrl = doc["ota_url"].as<const char*>();
-            Serial.println("[NET] Cloud triggered Over-The-Air firmware update!");
-            http.end();
-            secureClient.stop();
-            triggerOTA(customOtaUrl);
+
+        http.end();
+        secureClient.stop();
+        delay(250); // Free mbedTLS heap context
+
+        if (needOta) {
+            Serial.printf("[NET] Starting Over-The-Air firmware upgrade to: %s\n", otaTargetUrl.c_str());
+            triggerOTA(otaTargetUrl.length() > 0 ? otaTargetUrl.c_str() : nullptr);
+            return;
         }
     } else {
         adaptiveSyncInterval = 3000; // Retry quickly on transient network glitches
         Serial.printf("[NET] Telemetry sync response: %d\n", httpResponseCode);
+        http.end();
+        secureClient.stop();
     }
-    http.end();
-    secureClient.stop();
 }
 
 void maintainNetwork(const MeterReading &live) {

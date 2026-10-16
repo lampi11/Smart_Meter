@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Firmware
-#define FW_VERSION "1.0.5"
+#define FW_VERSION "1.0.6"
 
 // --- Hardware Pins (FROZEN) ---
 #define PZEM_RX_PIN 16
@@ -20,6 +20,12 @@
 #define LOW_BALANCE_WARN       50.0f
 #define URGENT_BALANCE_WARN    20.0f
 #define DEFAULT_BALANCE        100.0f
+
+// --- Anti-Blackout Survival Mode (0.5A / 110W throttling) ---
+#define SURVIVAL_BALANCE_THRESHOLD  10.0f  // Below Rs 10 enters Anti-Blackout Survival Mode
+#define SURVIVAL_CURRENT_LIMIT_A    0.50f  // 0.5 Amps limit (approx 110W for fan & light)
+#define SURVIVAL_POWER_LIMIT_W      120.0f // 120 Watts threshold
+#define SURVIVAL_TRIP_COOLDOWN_MS   20000UL // 20-second cool-off if tripped by iron/AC/geyser
 
 // --- No-Cut Window (IST hours) ---
 #define NO_CUT_START_HOUR 22  // 10 PM

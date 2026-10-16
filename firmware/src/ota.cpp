@@ -16,7 +16,7 @@ static bool otaValidated = false;
 static bool otaInProgress = false;
 
 // Returns: 1 if vA > vB, -1 if vA < vB, 0 if vA == vB
-static int compareVersions(const char* vA, const char* vB) {
+int compareVersions(const char* vA, const char* vB) {
     if (!vA || !vB) return 0;
     int majA = 0, minA = 0, patA = 0;
     int majB = 0, minB = 0, patB = 0;
@@ -151,15 +151,29 @@ void checkOTA() {
     http.setTimeout(5000);
 
     int code = http.GET();
+    String versionStr = "";
+    String urlStr = "";
+    bool hasUpdate = false;
+
     if (code == 200) {
         String resp = http.getString();
         StaticJsonDocument<256> doc;
         DeserializationError err = deserializeJson(doc, resp);
         if (!err && doc.containsKey("version")) {
-            const char* v = doc["version"];
-            const char* u = doc.containsKey("url") ? doc["url"] : nullptr;
-            handleCloudVersionCheck(v, u);
+            versionStr = doc["version"].as<String>();
+            if (doc.containsKey("url")) {
+                urlStr = doc["url"].as<String>();
+            }
+            hasUpdate = (compareVersions(versionStr.c_str(), FW_VERSION) > 0);
         }
     }
     http.end();
+    secureClient.stop();
+    plainClient.stop();
+    delay(200);
+
+    if (hasUpdate) {
+        Serial.printf("[OTA] Version check: new version v%s available! Initiating upgrade...\n", versionStr.c_str());
+        handleCloudVersionCheck(versionStr.c_str(), urlStr.length() > 0 ? urlStr.c_str() : nullptr);
+    }
 }

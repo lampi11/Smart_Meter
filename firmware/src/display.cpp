@@ -97,6 +97,13 @@ void updateDisplay(const MeterReading &reading, float balance,
         case BAL_NORMAL:
             lcd->printf("Bal: Rs %.2f", balance);
             break;
+        case BAL_SURVIVAL:
+            if (isSurvivalTripped()) {
+                lcd->print("TRIP: OVER 0.5A!");
+            } else {
+                lcd->print("BAL ZERO: LOW PWR");
+            }
+            break;
         case BAL_LOW:
             lcd->printf("LOW BAL: Rs %.0f", balance);
             break;

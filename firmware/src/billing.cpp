@@ -13,6 +13,10 @@ static unsigned long lastSaveTime = 0;
 static bool  relayOn              = true;
 static bool  relayActiveLow       = (RELAY_ON_STATE == LOW);
 
+// Anti-Blackout Survival Mode state
+static bool  survivalTripped      = false;
+static unsigned long survivalTripTime = 0;
+
 // ── helpers ──────────────────────────────────────────────
 static void setRelay(bool on) {
     relayOn = on;
@@ -41,7 +45,7 @@ void initBilling() {
     lastSaveTime   = millis();
 
     pinMode(RELAY_PIN, OUTPUT);
-    // Immediately energize relay if balance is good or in grace period
+    // Immediately energize relay if balance is good (> emergency limit or in grace period)
     setRelay(currentBalance > EMERGENCY_CREDIT_LIMIT || inNoCutWindow());
     Serial.printf("[BILLING] Boot balance: Rs %.2f | Relay: %s (Active-%s)\n", 
                   currentBalance, relayOn ? "ON" : "OFF", relayActiveLow ? "LOW" : "HIGH");
@@ -60,16 +64,60 @@ bool isRelayActiveLow() {
     return relayActiveLow;
 }
 
+bool isSurvivalMode() {
+    // Anti-Blackout Survival Mode: when balance <= 10 Rs, or <= 0 during night hours
+    return (currentBalance <= SURVIVAL_BALANCE_THRESHOLD && currentBalance > EMERGENCY_CREDIT_LIMIT) ||
+           (currentBalance <= 0 && inNoCutWindow());
+}
+
+bool isSurvivalTripped() {
+    return survivalTripped;
+}
+
 void updateBilling(const MeterReading &reading) {
-    // Cutoff / restore logic must evaluate unconditionally on every cycle
-    // (Ensures relay is energized even if PZEM reading is not yet valid or 0V)
-    if (currentBalance <= EMERGENCY_CREDIT_LIMIT && relayOn && !inNoCutWindow()) {
-        setRelay(false);
-        saveBalanceNow("cutoff");
-        verifyRelay();
-    } else if (currentBalance > 0 && !relayOn) {
-        setRelay(true);
-        saveBalanceNow("restored");
+    bool inSurvival = isSurvivalMode();
+
+    if (inSurvival) {
+        // --- Anti-Blackout Survival Mode Throttling (0.5A / 110W) ---
+        if (survivalTripped) {
+            // Check if cooldown expired to allow retry if tenant disconnected heavy load
+            if (millis() - survivalTripTime >= SURVIVAL_TRIP_COOLDOWN_MS) {
+                Serial.println("[SURVIVAL] Trip cooldown expired. Restoring power for fan/light...");
+                survivalTripped = false;
+                setRelay(true);
+            } else {
+                if (relayOn) setRelay(false);
+            }
+        } else {
+            // In survival mode: if load exceeds 0.5A (or 120W), trip the relay!
+            if (reading.valid && (reading.current > SURVIVAL_CURRENT_LIMIT_A || reading.power > SURVIVAL_POWER_LIMIT_W)) {
+                Serial.printf("[SURVIVAL] Overload trip! Current=%.2fA (limit %.2fA), Power=%.1fW\n",
+                              reading.current, SURVIVAL_CURRENT_LIMIT_A, reading.power);
+                survivalTripped = true;
+                survivalTripTime = millis();
+                setRelay(false);
+                saveBalanceNow("survival_overload_trip");
+            } else if (!relayOn) {
+                // Low power load allowed (fan & light)
+                setRelay(true);
+            }
+        }
+    } else {
+        // --- Normal Operation (Balance > 10 Rs): Full power forwarding ---
+        survivalTripped = false;
+
+        if (currentBalance > SURVIVAL_BALANCE_THRESHOLD) {
+            if (!relayOn) {
+                setRelay(true);
+                saveBalanceNow("full_power_restored");
+            }
+        } else if (currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
+            if (relayOn) {
+                setRelay(false);
+                saveBalanceNow("cutoff");
+                verifyRelay();
+            }
+        }
     }
 
     if (!reading.valid) return;
@@ -121,15 +169,16 @@ void saveBalanceNow(const char* reason) {
 
 void applyRecharge(float amount) {
     currentBalance += amount;
+    survivalTripped = false; // Reset overload trip on recharge
     saveBalanceNow(amount >= 0 ? "recharge" : "deduction");
 
-    if (!relayOn && currentBalance > 0) {
+    if (currentBalance > SURVIVAL_BALANCE_THRESHOLD) {
         setRelay(true);
-        saveBalanceNow("restored_after_recharge");
-    } else if (relayOn && currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
+    } else if (currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
         setRelay(false);
-        saveBalanceNow("cutoff_after_deduction");
         verifyRelay();
+    } else {
+        setRelay(true); // Survival mode allows fan/light
     }
     Serial.printf("[BILLING] Fund adjustment: %+.2f → Balance Rs %.2f (Relay %s)\n", 
                   amount, currentBalance, relayOn ? "ON" : "OFF");
@@ -137,15 +186,16 @@ void applyRecharge(float amount) {
 
 void setBalanceDirect(float newBal) {
     currentBalance = newBal;
+    survivalTripped = false; // Reset overload trip on balance set
     saveBalanceNow("direct_set");
 
-    if (!relayOn && currentBalance > 0) {
+    if (currentBalance > SURVIVAL_BALANCE_THRESHOLD) {
         setRelay(true);
-        saveBalanceNow("restored_after_set");
-    } else if (relayOn && currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
+    } else if (currentBalance <= EMERGENCY_CREDIT_LIMIT && !inNoCutWindow()) {
         setRelay(false);
-        saveBalanceNow("cutoff_after_set");
         verifyRelay();
+    } else {
+        setRelay(true);
     }
     Serial.printf("[BILLING] Direct balance set to: Rs %.2f (Relay %s)\n", 
                   currentBalance, relayOn ? "ON" : "OFF");
@@ -156,9 +206,12 @@ float        getUnsavedConsumption() { return unsavedConsumptionRs; }
 bool         isRelayOn()             { return relayOn; }
 
 BalanceState getBalanceState() {
+    if (isSurvivalMode()) {
+        return BAL_SURVIVAL;
+    }
     if (currentBalance > LOW_BALANCE_WARN)    return BAL_NORMAL;
     if (currentBalance > URGENT_BALANCE_WARN) return BAL_LOW;
-    if (currentBalance > 0)                   return BAL_URGENT;
+    if (currentBalance > SURVIVAL_BALANCE_THRESHOLD) return BAL_URGENT;
     if (currentBalance > EMERGENCY_CREDIT_LIMIT) return BAL_EMERGENCY;
     return BAL_CUTOFF;
 }
