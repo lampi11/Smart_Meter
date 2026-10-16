@@ -13,3 +13,4 @@ struct MeterReading {
 
 void initMeter();
 bool readMeter(MeterReading &reading);
+float getPzemCurrent();

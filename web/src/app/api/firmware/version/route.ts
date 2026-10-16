@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   return NextResponse.json({
-    version: "1.0.2",
+    version: "1.0.3",
     url: "https://smart-meter-tau.vercel.app/firmware.bin",
     release_date: "2026-10-17",
-    notes: "Remote Wi-Fi reset over-the-air, captive portal setup improvements, and OTA rollback safeguard"
+    notes: "Reliable connection management, independent PZEM sensor reading, and NTP sync fix"
   }, {
     headers: {
       'Cache-Control': 'no-store, max-age=0'

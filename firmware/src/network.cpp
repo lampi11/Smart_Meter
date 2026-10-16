@@ -24,12 +24,6 @@ static unsigned long lastAnonReport = 0;
 static bool ntpSynced = false;
 static unsigned long adaptiveSyncInterval = SYNC_INTERVAL_MS;
 
-// Persistent HTTP Keep-Alive client for lightning-fast sub-second telemetry
-static HTTPClient syncHttp;
-static WiFiClientSecure syncSecureClient;
-static WiFiClient syncPlainClient;
-static bool syncHttpConnected = false;
-
 // Anonymous R&D metrics accumulators
 static float vMin = 999.0f;
 static float vMax = 0.0f;
@@ -77,6 +71,13 @@ String getServerUrl() {
         netPrefs.begin("device", false);
         cachedServerUrl = netPrefs.getString("server_url", DEFAULT_SERVER_URL);
         netPrefs.end();
+        cachedServerUrl.trim();
+        while (cachedServerUrl.endsWith("/")) {
+            cachedServerUrl = cachedServerUrl.substring(0, cachedServerUrl.length() - 1);
+        }
+        if (!cachedServerUrl.startsWith("http")) {
+            cachedServerUrl = DEFAULT_SERVER_URL;
+        }
     }
     return cachedServerUrl;
 }
@@ -183,12 +184,19 @@ void initNetwork() {
         showWiFiConnected(WiFi.localIP().toString().c_str());
 
         // Save server URL if changed
-        if (strlen(customServerUrl.getValue()) > 0 && String(customServerUrl.getValue()) != server) {
-            netPrefs.begin("device", false);
-            netPrefs.putString("server_url", customServerUrl.getValue());
-            cachedServerUrl = customServerUrl.getValue();
-            netPrefs.end();
-            Serial.printf("[NET] Updated Server URL to: %s\n", cachedServerUrl.c_str());
+        if (strlen(customServerUrl.getValue()) > 0) {
+            String newServer = customServerUrl.getValue();
+            newServer.trim();
+            while (newServer.endsWith("/")) {
+                newServer = newServer.substring(0, newServer.length() - 1);
+            }
+            if (newServer.startsWith("http") && newServer != cachedServerUrl) {
+                netPrefs.begin("device", false);
+                netPrefs.putString("server_url", newServer);
+                cachedServerUrl = newServer;
+                netPrefs.end();
+                Serial.printf("[NET] Updated Server URL to: %s\n", cachedServerUrl.c_str());
+            }
         }
     } else {
         Serial.println("[NET] WiFi not connected. Running in autonomous metering mode with periodic background reconnect.");
@@ -265,20 +273,19 @@ static void syncTelemetry(const MeterReading &live) {
 
     String url = getServerUrl() + "/api/telemetry";
 
-    if (!syncHttpConnected || !syncHttp.connected()) {
-        if (syncHttpConnected) syncHttp.end();
-        if (url.startsWith("https://")) {
-            syncSecureClient.setInsecure();
-            syncHttp.begin(syncSecureClient, url);
-        } else {
-            syncHttp.begin(syncPlainClient, url);
-        }
-        syncHttp.setReuse(true);
-        syncHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-        syncHttp.setTimeout(2500);
-        syncHttpConnected = true;
+    HTTPClient http;
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
+
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(plainClient, url);
     }
-    syncHttp.addHeader("Content-Type", "application/json");
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(3500);
+    http.addHeader("Content-Type", "application/json");
 
     // Ultra-compact micro-JSON payload (optimized for 64 kbps links: only ~95 bytes!)
     String payload = "{";
@@ -294,20 +301,20 @@ static void syncTelemetry(const MeterReading &live) {
     payload += "}]}";
 
     unsigned long t0 = millis();
-    int httpResponseCode = syncHttp.POST(payload);
+    int httpResponseCode = http.POST(payload);
     unsigned long rtt = millis() - t0;
 
     if (httpResponseCode == 200) {
         // Dynamic Bandwidth Adaptation for 64 kbps / throttled networks:
-        if (rtt < 350) {
+        if (rtt < 500) {
             adaptiveSyncInterval = 1000;  // 1-second real-time sync on broadband/4G
-        } else if (rtt < 900) {
-            adaptiveSyncInterval = 2500;  // 2.5-second moderate sync
+        } else if (rtt < 1200) {
+            adaptiveSyncInterval = 2000;  // 2-second moderate sync
         } else {
-            adaptiveSyncInterval = 5000;  // 5.0-second low-bandwidth mode for 64 kbps
+            adaptiveSyncInterval = 4000;  // 4-second low-bandwidth mode for 64 kbps
         }
 
-        String response = syncHttp.getString();
+        String response = http.getString();
         StaticJsonDocument<384> doc;
         DeserializationError err = deserializeJson(doc, response);
         
@@ -341,32 +348,31 @@ static void syncTelemetry(const MeterReading &live) {
             showCustomMessage("RESETTING WIFI");
             delay(1000);
             resetWiFiCredentials();
-            syncHttp.end();
-            syncHttpConnected = false;
+            http.end();
+            secureClient.stop();
             delay(500);
             ESP.restart();
         }
         if (!err && doc.containsKey("ota") && doc["ota"] == true) {
             const char* customOtaUrl = doc["ota_url"].as<const char*>();
             Serial.println("[NET] Cloud triggered Over-The-Air firmware update!");
-            syncHttp.end();
-            syncHttpConnected = false;
+            http.end();
+            secureClient.stop();
             triggerOTA(customOtaUrl);
         }
     } else {
-        adaptiveSyncInterval = 10000; // Back off on packet drop / offline
-        if (httpResponseCode < 0) {
-            syncHttp.end();
-            syncHttpConnected = false;
-        }
+        adaptiveSyncInterval = 3000; // Retry quickly on transient network glitches
+        Serial.printf("[NET] Telemetry sync response: %d\n", httpResponseCode);
     }
+    http.end();
+    secureClient.stop();
 }
 
 void maintainNetwork(const MeterReading &live) {
     if (isWiFiConnected()) {
         if (!ntpSynced) syncNTP();
         
-        // Adaptive sync interval (1s on fast network, 5s on 64 kbps, 10s on backoff)
+        // Adaptive sync interval (1s on fast network, 4s on 64 kbps, 3s on backoff)
         if (millis() - lastSync > adaptiveSyncInterval) {
             lastSync = millis();
             syncTelemetry(live);
@@ -378,11 +384,6 @@ void maintainNetwork(const MeterReading &live) {
             sendAnonymousReport();
         }
         return;
-    }
-
-    if (syncHttpConnected) {
-        syncHttp.end();
-        syncHttpConnected = false;
     }
 
     if (millis() - lastRetry > WIFI_RETRY_INTERVAL_MS) {
@@ -400,10 +401,10 @@ void maintainNetwork(const MeterReading &live) {
 
 void syncNTP() {
     configTime(IST_OFFSET_SECONDS, 0, NTP_SERVER);
-    struct tm t;
-    if (getLocalTime(&t, 5000)) {
-        time_t epoch = mktime(&t) - IST_OFFSET_SECONDS; // store as UTC
-        setTimeFromNTP((uint32_t)epoch);
+    time_t now = time(nullptr);
+    if (now > 1672531199) { // > Jan 1, 2023: valid epoch received
+        setTimeFromNTP((uint32_t)now);
         ntpSynced = true;
+        Serial.printf("[NET] NTP synced UTC epoch: %lu\n", (unsigned long)now);
     }
 }

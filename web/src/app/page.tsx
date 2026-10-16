@@ -115,11 +115,15 @@ export default function Dashboard() {
 
   const handleSendMessage = async (meterId: string, message: string) => {
     try {
-      await fetch('/api/meters/message', {
+      const res = await fetch('/api/meters/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meter_id: meterId, message })
       });
+      const d = await res.json();
+      if (d.success) {
+        alert(`Message "${message}" queued for meter screen!`);
+      }
     } catch (err) {
       console.error('Send message error:', err);
     }
@@ -281,9 +285,9 @@ export default function Dashboard() {
                     {/* Device info footer */}
                     <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500 font-mono">
                       <span>{meter.device_id}</span>
-                      {reading && (
-                        <span>{new Date(reading.recorded_at).toLocaleTimeString()}</span>
-                      )}
+                      <span>
+                        Sync: {meter.last_seen_at ? new Date(meter.last_seen_at).toLocaleTimeString() : 'Never'}
+                      </span>
                     </div>
 
                     {/* Send LCD Message & Recharge */}

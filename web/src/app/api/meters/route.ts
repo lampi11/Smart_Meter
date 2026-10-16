@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     const enrichedMeters = await Promise.all(
       (metersData || []).map(async (meter: any) => {
         const lastSeen = meter.last_seen_at ? new Date(meter.last_seen_at).getTime() : 0;
-        const isOnline = now - lastSeen < 15000;
+        const isOnline = now - lastSeen < 45000;
 
         const { data: latestReading } = await supabase
           .from('readings')

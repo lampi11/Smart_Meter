@@ -2,9 +2,8 @@
 #include "config.h"
 #include "time_provider.h"
 #include <Preferences.h>
+#include "meter.h"
 #include <PZEM004Tv30.h>
-
-extern PZEM004Tv30 pzem;   // defined in meter.cpp
 
 static Preferences billingPrefs;
 static float currentBalance       = 0;
@@ -22,7 +21,7 @@ static void setRelay(bool on) {
 
 static void verifyRelay() {
     delay(RELAY_VERIFY_DELAY_MS);
-    float cur = pzem.current();
+    float cur = getPzemCurrent();
     if (!isnan(cur) && cur > RELAY_VERIFY_CURRENT_THRESHOLD) {
         Serial.println("[DIAG] relay_verify_failed — current still flowing after cut");
     }
