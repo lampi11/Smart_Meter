@@ -22,6 +22,7 @@ static unsigned long lastRetry = 0;
 static unsigned long lastSync = 0;
 static unsigned long lastAnonReport = 0;
 static bool ntpSynced = false;
+static unsigned long adaptiveSyncInterval = SYNC_INTERVAL_MS;
 
 // Persistent HTTP Keep-Alive client for lightning-fast sub-second telemetry
 static HTTPClient syncHttp;
@@ -267,29 +268,35 @@ static void syncTelemetry(const MeterReading &live) {
     }
     syncHttp.addHeader("Content-Type", "application/json");
 
+    // Ultra-compact micro-JSON payload (optimized for 64 kbps links: only ~95 bytes!)
     String payload = "{";
-    payload += "\"device_id\":\"" + getDeviceMac() + "\",";
-    payload += "\"balance_after\":" + String(getBalance()) + ",";
-    payload += "\"relay_on\":" + String(isRelayOn() ? "true" : "false") + ",";
-    payload += "\"readings\":[";
+    payload += "\"d\":\"" + getDeviceMac() + "\",";
+    payload += "\"b\":" + String(getBalance(), 2) + ",";
+    payload += "\"r\":" + String(isRelayOn() ? "1" : "0") + ",";
+    payload += "\"rdgs\":[{";
+    payload += "\"t\":" + String(getEpoch()) + ",";
+    payload += "\"v\":" + String(live.valid ? live.voltage : 0, 1) + ",";
+    payload += "\"i\":" + String(live.valid ? live.current : 0, 2) + ",";
+    payload += "\"p\":" + String(live.valid ? live.power : 0, 1) + ",";
+    payload += "\"e\":" + String(live.valid ? live.energy : 0, 2);
+    payload += "}]}";
 
-    // Send the LIVE reading
-    payload += "{";
-    payload += "\"timestamp\":" + String(getEpoch()) + ",";
-    payload += "\"voltage\":" + String(live.valid ? live.voltage : 0) + ",";
-    payload += "\"current\":" + String(live.valid ? live.current : 0) + ",";
-    payload += "\"power\":" + String(live.valid ? live.power : 0) + ",";
-    payload += "\"energy\":" + String(live.valid ? live.energy : 0) + ",";
-    payload += "\"balance_after\":" + String(getBalance()) + ",";
-    payload += "\"relay_on\":" + String(isRelayOn() ? "true" : "false");
-    payload += "}";
-
-    payload += "]}";
-
+    unsigned long t0 = millis();
     int httpResponseCode = syncHttp.POST(payload);
+    unsigned long rtt = millis() - t0;
+
     if (httpResponseCode == 200) {
+        // Dynamic Bandwidth Adaptation for 64 kbps / throttled networks:
+        if (rtt < 350) {
+            adaptiveSyncInterval = 1000;  // 1-second real-time sync on broadband/4G
+        } else if (rtt < 900) {
+            adaptiveSyncInterval = 2500;  // 2.5-second moderate sync
+        } else {
+            adaptiveSyncInterval = 5000;  // 5.0-second low-bandwidth mode for 64 kbps
+        }
+
         String response = syncHttp.getString();
-        StaticJsonDocument<256> doc;
+        StaticJsonDocument<384> doc;
         DeserializationError err = deserializeJson(doc, response);
         
         if (!err && doc.containsKey("recharge")) {
@@ -312,6 +319,11 @@ static void syncTelemetry(const MeterReading &live) {
                 showCustomMessage(msg);
             }
         }
+        if (!err && doc.containsKey("latest_version")) {
+            const char* latestVer = doc["latest_version"];
+            const char* otaUrl = doc.containsKey("ota_url") ? doc["ota_url"] : nullptr;
+            handleCloudVersionCheck(latestVer, otaUrl);
+        }
         if (!err && doc.containsKey("ota") && doc["ota"] == true) {
             const char* customOtaUrl = doc["ota_url"].as<const char*>();
             Serial.println("[NET] Cloud triggered Over-The-Air firmware update!");
@@ -320,6 +332,7 @@ static void syncTelemetry(const MeterReading &live) {
             triggerOTA(customOtaUrl);
         }
     } else {
+        adaptiveSyncInterval = 10000; // Back off on packet drop / offline
         if (httpResponseCode < 0) {
             syncHttp.end();
             syncHttpConnected = false;
@@ -331,8 +344,8 @@ void maintainNetwork(const MeterReading &live) {
     if (isWiFiConnected()) {
         if (!ntpSynced) syncNTP();
         
-        // Fast sync telemetry every 2 seconds
-        if (millis() - lastSync > SYNC_INTERVAL_MS) {
+        // Adaptive sync interval (1s on fast network, 5s on 64 kbps, 10s on backoff)
+        if (millis() - lastSync > adaptiveSyncInterval) {
             lastSync = millis();
             syncTelemetry(live);
         }

@@ -66,6 +66,17 @@ void showWiFiConnected(const char* ip) {
     delay(2000);
 }
 
+void showOTAProgress(int pct) {
+    if (!lcd) return;
+    lcd->setCursor(0, 0);
+    lcd->print("UPDATING FW...  ");
+    lcd->setCursor(0, 1);
+    char bar[17] = {0};
+    snprintf(bar, sizeof(bar), "Progress: %3d%%  ", pct);
+    lcd->print(bar);
+    customMsgEnd = millis() + 4000;
+}
+
 void updateDisplay(const MeterReading &reading, float balance,
                    BalanceState state, bool relayOn) {
     if (!lcd) return;
