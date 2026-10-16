@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Activity, PowerOff, IndianRupee, Zap, MapPin, QrCode, Plus, Trash2, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Activity, PowerOff, IndianRupee, Zap, MapPin, QrCode, Plus, Trash2, ShieldCheck, RefreshCw, Wifi } from 'lucide-react';
 
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
@@ -355,6 +355,25 @@ export default function Dashboard() {
                         }}
                         className="w-full text-center text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 py-1 rounded transition flex items-center justify-center gap-1">
                         <Zap className="w-3 h-3 text-indigo-500" /> Push Wireless OTA Update
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Reset Wi-Fi credentials on ${meter.label}? The meter will wipe saved Wi-Fi and reboot into setup access point Lampitex-Setup so you can enter new credentials.`)) return;
+                          try {
+                            const res = await fetch('/api/meters/reset-wifi', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ meter_id: meter.id })
+                            });
+                            const d = await res.json();
+                            alert(d.message || 'Wi-Fi reset signal sent! The meter will reboot into Setup Portal mode.');
+                          } catch (e) {
+                            alert('Failed to send Wi-Fi reset command');
+                          }
+                        }}
+                        className="w-full text-center text-[11px] font-semibold text-amber-600 hover:text-amber-800 hover:bg-amber-50 py-1 rounded transition flex items-center justify-center gap-1">
+                        <Wifi className="w-3 h-3 text-amber-500" /> Reset Wi-Fi via OTA
                       </button>
                     </div>
                   </div>

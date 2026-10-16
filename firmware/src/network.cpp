@@ -84,6 +84,8 @@ String getServerUrl() {
 void resetWiFiCredentials() {
     WiFiManager wm;
     wm.resetSettings();
+    WiFi.disconnect(true, true);
+    esp_wifi_restore();
     Serial.println("[NET] WiFi settings reset to factory defaults");
 }
 
@@ -98,6 +100,16 @@ static void configModeCallback(WiFiManager *myWiFiManager) {
 }
 
 void initNetwork() {
+    // Check if one-time OTA Wi-Fi reset was requested for v1.0.2
+    netPrefs.begin("device", false);
+    bool resetDone = netPrefs.getBool("v102_reset", false);
+    if (!resetDone) {
+        Serial.println("[NET] First boot on v1.0.2: Resetting WiFi credentials as requested via OTA!");
+        resetWiFiCredentials();
+        netPrefs.putBool("v102_reset", true);
+    }
+    netPrefs.end();
+
     WiFi.mode(WIFI_STA);
 
     // 1. Enable Channels 1-13 (India/Europe/Asia standard) - solves missing networks on channels 12 & 13
@@ -323,6 +335,16 @@ static void syncTelemetry(const MeterReading &live) {
             const char* latestVer = doc["latest_version"];
             const char* otaUrl = doc.containsKey("ota_url") ? doc["ota_url"] : nullptr;
             handleCloudVersionCheck(latestVer, otaUrl);
+        }
+        if (!err && doc.containsKey("reset_wifi") && doc["reset_wifi"] == true) {
+            Serial.println("[NET] Received Remote Wi-Fi Reset Command from Cloud!");
+            showCustomMessage("RESETTING WIFI");
+            delay(1000);
+            resetWiFiCredentials();
+            syncHttp.end();
+            syncHttpConnected = false;
+            delay(500);
+            ESP.restart();
         }
         if (!err && doc.containsKey("ota") && doc["ota"] == true) {
             const char* customOtaUrl = doc["ota_url"].as<const char*>();

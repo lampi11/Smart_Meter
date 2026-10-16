@@ -32,6 +32,14 @@ void initOTA() {
     const esp_partition_t* running = esp_ota_get_running_partition();
     Serial.printf("[OTA] Running firmware v%s from partition: %s\n", 
                   FW_VERSION, running ? running->label : "default");
+    esp_ota_img_states_t ota_state;
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            Serial.println("[OTA] Partition is pending verify. Marking image valid to prevent rollback...");
+            esp_ota_mark_app_valid_cancel_rollback();
+            otaValidated = true;
+        }
+    }
 }
 
 bool isOTASafe() {

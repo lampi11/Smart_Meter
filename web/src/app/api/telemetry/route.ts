@@ -43,7 +43,8 @@ export async function POST(request: Request) {
       message: result?.message ?? null,
       recharge: result?.recharge ?? 0,
       ota: result?.ota ?? false,
-      latest_version: "1.0.1",
+      reset_wifi: result?.reset_wifi ?? false,
+      latest_version: "1.0.2",
       ota_url: "https://smart-meter-tau.vercel.app/firmware.bin"
     });
   } catch (error: any) {

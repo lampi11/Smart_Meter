@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 // Firmware
-#define FW_VERSION "1.0.1"
+#define FW_VERSION "1.0.2"
 
 // --- Hardware Pins (FROZEN) ---
 #define PZEM_RX_PIN 16
@@ -48,7 +48,7 @@
 #define DEFAULT_SERVER_URL     "https://smart-meter-tau.vercel.app"
 #define FALLBACK_SERVER_URL    "http://lampitex-dashboard.loca.lt"
 #define AP_SSID_PREFIX         "Lampitex-Setup-"
-#define CONFIG_PORTAL_TIMEOUT  60       // 1 minute captive portal timeout
+#define CONFIG_PORTAL_TIMEOUT  300      // 5 minutes captive portal timeout for WiFi setup
 #define RND_TELEMETRY_INTERVAL 3600000UL // 1 hour R&D anonymous telemetry
 
 // --- OTA ---
