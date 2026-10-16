@@ -1,57 +1,114 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'lampitex',
-  password: 'mysecretpassword',
-  port: 5432,
-});
+import { supabase } from '@/lib/supabaseClient';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId') || '11111111-1111-1111-1111-111111111111';
+    const ownerId = searchParams.get('ownerId');
 
-    const client = await pool.connect();
-    
-    // Fetch Organization
-    const orgRes = await client.query('SELECT * FROM organizations WHERE id = $1', [orgId]);
-    const organization = orgRes.rows[0];
+    // Fetch meters with optional owner filter
+    let query = supabase
+      .from('meters')
+      .select(`
+        id,
+        device_id,
+        serial_number,
+        label,
+        balance,
+        tariff_grid,
+        relay_on,
+        last_seen_at,
+        created_at,
+        properties ( name )
+      `)
+      .order('created_at', { ascending: false });
 
-    // Fetch Meters and Latest Reading
-    const metersRes = await client.query(`
-      SELECT 
-        m.id, 
-        m.device_id, 
-        m.qr_code, 
-        m.label, 
-        m.balance, 
-        m.relay_on,
-        m.last_seen_at,
-        (EXTRACT(EPOCH FROM (NOW() - m.last_seen_at)) < 15) as is_online,
-        p.name as property_name,
-        (SELECT json_build_object(
-            'voltage', r.voltage, 
-            'current', r.current, 
-            'power', r.power,
-            'energy_kwh', r.energy_kwh,
-            'recorded_at', r.recorded_at
-        ) FROM readings r WHERE r.meter_id = m.id ORDER BY r.recorded_at DESC LIMIT 1) as latest_reading
-      FROM meters m
-      JOIN properties p ON m.property_id = p.id
-      WHERE m.organization_id = $1
-    `, [orgId]);
+    if (ownerId) {
+      query = query.eq('owner_id', ownerId);
+    }
 
-    client.release();
+    const { data: metersData, error: metersErr } = await query;
+
+    if (metersErr) {
+      console.error('Fetch meters error:', metersErr);
+      return NextResponse.json({ error: metersErr.message }, { status: 500 });
+    }
+
+    // Attach latest reading and online status (within 15s)
+    const now = Date.now();
+    const enrichedMeters = await Promise.all(
+      (metersData || []).map(async (meter: any) => {
+        const lastSeen = meter.last_seen_at ? new Date(meter.last_seen_at).getTime() : 0;
+        const isOnline = now - lastSeen < 15000;
+
+        const { data: latestReading } = await supabase
+          .from('readings')
+          .select('voltage, current, power, energy_kwh, recorded_at')
+          .eq('meter_id', meter.id)
+          .order('recorded_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        return {
+          id: meter.id,
+          device_id: meter.device_id,
+          serial_number: meter.serial_number,
+          qr_code: meter.serial_number || meter.device_id,
+          label: meter.label,
+          balance: meter.balance,
+          relay_on: meter.relay_on,
+          last_seen_at: meter.last_seen_at,
+          is_online: isOnline,
+          property_name: meter.properties?.name || 'Main Property',
+          latest_reading: latestReading || null
+        };
+      })
+    );
 
     return NextResponse.json({
-      organization,
-      meters: metersRes.rows
+      organization: {
+        name: 'Lampitex Smart Meter Network'
+      },
+      meters: enrichedMeters
     });
-  } catch (error) {
-    console.error('Database Error:', error);
+  } catch (error: any) {
+    console.error('API /meters error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const meterId = searchParams.get('id');
+
+    if (!meterId) {
+      return NextResponse.json({ error: 'Meter ID required' }, { status: 400 });
+    }
+
+    // Get serial number to unclaim product in registry
+    const { data: meter } = await supabase
+      .from('meters')
+      .select('serial_number')
+      .eq('id', meterId)
+      .single();
+
+    if (meter?.serial_number) {
+      await supabase
+        .from('product_registry')
+        .update({ is_claimed: false, claimed_at: null })
+        .eq('serial_number', meter.serial_number);
+    }
+
+    const { error } = await supabase.from('meters').delete().eq('id', meterId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('API /meters DELETE error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

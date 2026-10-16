@@ -1,34 +1,27 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'lampitex',
-  password: 'mysecretpassword',
-  port: 5432,
-});
+import { supabase } from '@/lib/supabaseClient';
 
 export async function POST(request: Request) {
   try {
     const { meter_id, message } = await request.json();
 
     if (!meter_id || !message) {
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+      return NextResponse.json({ error: 'Meter ID and message required' }, { status: 400 });
     }
 
-    const client = await pool.connect();
-    
-    await client.query(`
-      UPDATE meters 
-      SET pending_message = $1
-      WHERE id = $2
-    `, [message.substring(0, 16), meter_id]); // LCD is 16 chars wide
+    const trimmed = String(message).substring(0, 16); // LCD is 16 chars wide
 
-    client.release();
+    const { error } = await supabase
+      .from('meters')
+      .update({ pending_message: trimmed })
+      .eq('id', meter_id);
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: trimmed });
+  } catch (error: any) {
     console.error('API /meters/message error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

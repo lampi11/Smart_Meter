@@ -1,34 +1,48 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'lampitex',
-  password: 'mysecretpassword',
-  port: 5432,
-});
+import { supabase } from '@/lib/supabaseClient';
 
 export async function POST(request: Request) {
   try {
     const { meter_id, amount } = await request.json();
 
-    if (!meter_id || isNaN(parseFloat(amount))) {
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+    const parsedAmount = parseFloat(amount);
+    if (!meter_id || isNaN(parsedAmount)) {
+      return NextResponse.json({ error: 'Valid meter ID and amount required' }, { status: 400 });
     }
 
-    const client = await pool.connect();
-    
-    await client.query(`
-      UPDATE meters 
-      SET pending_recharge = pending_recharge + $1
-      WHERE id = $2
-    `, [parseFloat(amount), meter_id]);
+    // Get current meter
+    const { data: meter, error: fetchErr } = await supabase
+      .from('meters')
+      .select('balance, pending_recharge')
+      .eq('id', meter_id)
+      .single();
 
-    client.release();
+    if (fetchErr || !meter) {
+      return NextResponse.json({ error: 'Meter not found' }, { status: 404 });
+    }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    const newPending = (parseFloat(meter.pending_recharge) || 0) + parsedAmount;
+
+    const { error: updateErr } = await supabase
+      .from('meters')
+      .update({ pending_recharge: newPending })
+      .eq('id', meter_id);
+
+    if (updateErr) {
+      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+
+    // Record in ledger
+    await supabase.from('ledger').insert({
+      meter_id,
+      type: parsedAmount >= 0 ? 'recharge' : 'deduction',
+      amount: parsedAmount,
+      balance_after: parseFloat(meter.balance) + parsedAmount,
+      note: `Remote fund adjustment from dashboard`
+    });
+
+    return NextResponse.json({ success: true, pending_recharge: newPending });
+  } catch (error: any) {
     console.error('API /meters/recharge error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
