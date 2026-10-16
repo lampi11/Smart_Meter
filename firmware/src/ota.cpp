@@ -4,6 +4,7 @@
 #include "network.h"
 #include "display.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPUpdate.h>
 #include <esp_ota_ops.h>
 
@@ -38,10 +39,17 @@ void triggerOTA(const char* customUrl) {
 
     showCustomMessage("UPDATING FW...");
 
-    WiFiClient client;
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
     httpUpdate.rebootOnUpdate(false);
 
-    t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
+    t_httpUpdate_return ret;
+    if (otaUrl.startsWith("https://")) {
+        secureClient.setInsecure();
+        ret = httpUpdate.update(secureClient, otaUrl);
+    } else {
+        ret = httpUpdate.update(plainClient, otaUrl);
+    }
 
     switch (ret) {
         case HTTP_UPDATE_FAILED:

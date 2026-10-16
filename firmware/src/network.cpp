@@ -8,6 +8,7 @@
 #include "ota.h"
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -142,8 +143,18 @@ static void sendAnonymousReport() {
     if (!isWiFiConnected()) return;
 
     HTTPClient http;
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
     String url = getServerUrl() + "/api/anonymous";
-    http.begin(url);
+
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(plainClient, url);
+    }
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(4000);
     http.addHeader("Content-Type", "application/json");
 
     float vAvg = (sampleCount > 0) ? (vSum / sampleCount) : 0;
@@ -193,8 +204,18 @@ static void syncTelemetry(const MeterReading &live) {
     }
 
     HTTPClient http;
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
     String url = getServerUrl() + "/api/telemetry";
-    http.begin(url);
+
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(plainClient, url);
+    }
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(4000);
     http.addHeader("Content-Type", "application/json");
 
     String payload = "{";
