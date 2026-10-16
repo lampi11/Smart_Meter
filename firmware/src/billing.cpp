@@ -22,7 +22,9 @@ static void setRelay(bool on) {
     relayOn = on;
     int pinState = on ? (relayActiveLow ? LOW : HIGH) : (relayActiveLow ? HIGH : LOW);
     digitalWrite(RELAY_PIN, pinState);
-    Serial.printf("[BILLING] Relay %s (GPIO %d = %s, Active-%s)\n", 
+    digitalWrite(2, pinState); // Also drive D2 & onboard LED
+    digitalWrite(5, pinState); // Also drive D5
+    Serial.printf("[BILLING] Relay %s (GPIO %d, 2, 5 = %s, Active-%s)\n", 
                   on ? "ON" : "OFF", RELAY_PIN, 
                   pinState == HIGH ? "HIGH" : "LOW",
                   relayActiveLow ? "LOW" : "HIGH");
@@ -45,6 +47,8 @@ void initBilling() {
     lastSaveTime   = millis();
 
     pinMode(RELAY_PIN, OUTPUT);
+    pinMode(2, OUTPUT); // D2 & built-in LED
+    pinMode(5, OUTPUT); // D5
     // Immediately energize relay if balance is good (> emergency limit or in grace period)
     setRelay(currentBalance > EMERGENCY_CREDIT_LIMIT || inNoCutWindow());
     Serial.printf("[BILLING] Boot balance: Rs %.2f | Relay: %s (Active-%s)\n", 
