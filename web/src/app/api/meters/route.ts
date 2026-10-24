@@ -58,7 +58,7 @@ export async function GET(request: Request) {
           label: meter.label,
           balance: meter.balance,
           relay_on: meter.relay_on,
-          relay_polarity: meter.relay_polarity || 'LOW',
+          relay_polarity: meter.relay_polarity || 'HIGH',
           last_seen_at: meter.last_seen_at,
           is_online: isOnline,
           property_name: meter.properties?.name || 'Main Property',

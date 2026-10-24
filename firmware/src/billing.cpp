@@ -43,7 +43,9 @@ void initBilling() {
     billingPrefs.begin("billing", false);
     currentBalance = billingPrefs.getFloat("balance", DEFAULT_BALANCE);
     lastEnergyKwh  = billingPrefs.getFloat("lastE", -1.0f);
-    relayActiveLow = billingPrefs.getBool("actLow", (RELAY_ON_STATE == LOW));
+    // Synchronize relayActiveLow with compile-time configuration (Active-HIGH for SSR-40DA)
+    relayActiveLow = (RELAY_ON_STATE == LOW);
+    billingPrefs.putBool("actLow", relayActiveLow);
     lastSaveTime   = millis();
 
     pinMode(RELAY_PIN, OUTPUT);

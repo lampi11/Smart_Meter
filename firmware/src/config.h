@@ -2,14 +2,14 @@
 #include <Arduino.h>
 
 // Firmware
-#define FW_VERSION "1.0.7"
+#define FW_VERSION "1.0.8"
 
 // --- Hardware Pins (FROZEN) ---
 #define PZEM_RX_PIN 16
 #define PZEM_TX_PIN 17
 #define RELAY_PIN   4
-#define RELAY_ON_STATE  LOW
-#define RELAY_OFF_STATE HIGH
+#define RELAY_ON_STATE  HIGH
+#define RELAY_OFF_STATE LOW
 #define I2C_SDA     21
 #define I2C_SCL     22
 

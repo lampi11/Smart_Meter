@@ -44,8 +44,8 @@ export async function POST(request: Request) {
       recharge: result?.recharge ?? 0,
       ota: result?.ota ?? false,
       reset_wifi: result?.reset_wifi ?? false,
-      latest_version: "1.0.7",
-      relay_polarity: result?.relay_polarity ?? "LOW",
+      latest_version: "1.0.8",
+      relay_polarity: result?.relay_polarity ?? "HIGH",
       ota_url: "https://smart-meter-tau.vercel.app/firmware.bin"
     });
   } catch (error: any) {
